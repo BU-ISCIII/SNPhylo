@@ -241,7 +241,7 @@ library(getopt)
 #LD Linkage Disequilibrium
 #MAF Minor Allele Frequency
 h <- function(x) {
-    cat("Usage: Rscript --vanilla generate_snp_sequence.R -v VCF_file|-H HapMap_file|-d GDS_file [-l LD_threshold (2)] [-m MAF_threshold (0.05)] [-M Missing_rate (0.05)] [-o Prefix_of_output_files (output)] [-a The_number_of_the_last_autosome (22)] [-h]\n\n")
+    cat("Usage: Rscript --vanilla generate_snp_sequence.R -v VCF_file|-H HapMap_file|-d GDS_file [-l LD_threshold (2)] [-m MAF_threshold (0.05)] [-M Missing_rate (0.05)] [-o Prefix_of_output_files (output)] [-a The_number_of_the_last_autosome (optional)] [-h]\n\n")
     quit(save="no", status=x)
 }
 
@@ -264,7 +264,7 @@ file.prefix <- ifelse(is.null(opt$prefix), "output", opt$prefix)
 ld.threshold <- ifelse(is.null(opt$ld), 2, opt$ld)
 maf.threshold <- ifelse(is.null(opt$maf), 0.05, opt$maf)
 miss.rate <- ifelse(is.null(opt$miss), 0.05, opt$miss)
-last.autosome <- ifelse(is.null(opt$asome), 22, opt$asome)
+last.autosome <- if (!is.null(opt$asome)) opt$asome else NULL
 num.thread <- ifelse(is.null(opt$tnum), 1, opt$tnum)
 
 message("file.prefix: ", file.prefix)
@@ -277,7 +277,13 @@ message("num.thread: ", num.thread)
 library(gdsfmt)
 library(SNPRelate)
 
-# snpgds.option = snpgdsOption(autosome.end=last.autosome)
+if (!is.null(last.autosome)) {
+    snpgds.option <- snpgdsOption(autosome.end = last.autosome)
+    message(sprintf("Filtering to autosomes up to chromosome %d.", last.autosome))
+} else {
+    snpgds.option <- snpgdsOption()
+    message("No autosome limit specified; analyzing all chromosomes/contigs.")
+}
 
 library(compiler)
 enableJIT(3)
