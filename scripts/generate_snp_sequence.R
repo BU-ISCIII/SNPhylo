@@ -241,7 +241,7 @@ library(getopt)
 #LD Linkage Disequilibrium
 #MAF Minor Allele Frequency
 h <- function(x) {
-    cat("Usage: Rscript --vanilla generate_snp_sequence.R -v VCF_file|-H HapMap_file|-d GDS_file [-l LD_threshold (0.5)] [-m MAF_threshold (0.05)] [-M Missing_rate (0.05)] [-o Prefix_of_output_files (output)] [-a The_number_of_the_last_autosome (14)] [-h]\n\n")
+    cat("Usage: Rscript --vanilla generate_snp_sequence.R -v VCF_file|-H HapMap_file|-d GDS_file [-l LD_threshold (2)] [-m MAF_threshold (0.05)] [-M Missing_rate (0.05)] [-o Prefix_of_output_files (output)] [-a The_number_of_the_last_autosome (22)] [-h]\n\n")
     quit(save="no", status=x)
 }
 
@@ -264,7 +264,7 @@ file.prefix <- ifelse(is.null(opt$prefix), "output", opt$prefix)
 ld.threshold <- ifelse(is.null(opt$ld), 2, opt$ld)
 maf.threshold <- ifelse(is.null(opt$maf), 0.05, opt$maf)
 miss.rate <- ifelse(is.null(opt$miss), 0.05, opt$miss)
-last.autosome <- ifelse(is.null(opt$asome), 1, opt$asome)
+last.autosome <- ifelse(is.null(opt$asome), 22, opt$asome)
 num.thread <- ifelse(is.null(opt$tnum), 1, opt$tnum)
 
 print("file.prefix")
@@ -300,7 +300,7 @@ if (! is.null(opt$gds)) {
         print("Finished snpgdsVCF2GDS_R")
     } else {
         print("We should not start here")
-        snpgdsVCF2GDS(vcf.file, gds.file, method="biallelic.only", compress.annotation="ZIP.fast", option=snpgds.option)
+        snpgdsVCF2GDS(opt$vcf, gds.file, method="biallelic.only", compress.annotation="ZIP.fast", option=snpgds.option)
     }
 } else if (! is.null(opt$hapmap)) {
     hapmap.file <- opt$hapmap
@@ -320,6 +320,11 @@ print("Finished snpset")
 print("Starting snpset.id")
 snpset.id <- unlist(snpset)
 print("Finished snpset.id")
+if (length(snpset.id) == 0L) {
+    cat("No SNPs remain after LD/MAF/missing-rate filtering. Exiting.\n")
+    showfile.gds(closeall=TRUE)
+    quit(save = "no", status = 1)
+}
 print("Starting gds2fasta")
 gds2fasta(genofile, file.prefix, snp.id = snpset.id)
 print("Finished gds2fasta")
