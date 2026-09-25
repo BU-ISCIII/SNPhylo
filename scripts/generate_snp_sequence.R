@@ -171,9 +171,6 @@ hapmap2gds <- function (hapmap.fn, outfn.gds, nblock = 1024, compress.annotation
 }
 
 gds2fasta <- function (gdsobj, pos.fn, snp.id = NULL, verbose = FALSE) {
-    stopifnot(class(gdsobj) == "gds.class")
-    stopifnot(is.character(pos.fn))
-
     if (verbose) 
         cat("Extract SNP data as FASTA format from GDS:\n")
     total.snp.ids <- read.gdsn(index.gdsn(gdsobj, "snp.id"))
@@ -244,7 +241,7 @@ library(getopt)
 #LD Linkage Disequilibrium
 #MAF Minor Allele Frequency
 h <- function(x) {
-    cat("Usage: Rscript --vanilla generate_snp_sequence.R -v VCF_file|-H HapMap_file|-d GDS_file [-l LD_threshold (0.5)] [-m MAF_threshold (0.05)] [-M Missing_rate (0.05)] [-o Prefix_of_output_files (output)] [-a The_number_of_the_last_autosome (22)] [-h]\n\n")
+    cat("Usage: Rscript --vanilla generate_snp_sequence.R -v VCF_file|-H HapMap_file|-d GDS_file [-l LD_threshold (2)] [-m MAF_threshold (0.05)] [-M Missing_rate (0.05)] [-o Prefix_of_output_files (output)] [-a The_number_of_the_last_autosome (optional)] [-h]\n\n")
     quit(save="no", status=x)
 }
 
@@ -264,31 +261,46 @@ opt <- getopt(matrix(c(
 if (! is.null(opt$help)) { h(0) }
 
 file.prefix <- ifelse(is.null(opt$prefix), "output", opt$prefix)
-ld.threshold <- ifelse(is.null(opt$ld), 0.5, opt$ld)
+ld.threshold <- ifelse(is.null(opt$ld), 2, opt$ld)
 maf.threshold <- ifelse(is.null(opt$maf), 0.05, opt$maf)
 miss.rate <- ifelse(is.null(opt$miss), 0.05, opt$miss)
-last.autosome <- ifelse(is.null(opt$asome), 22, opt$asome)
+last.autosome <- if (!is.null(opt$asome)) opt$asome else NULL
 num.thread <- ifelse(is.null(opt$tnum), 1, opt$tnum)
+
+message("file.prefix: ", file.prefix)
+message("ld.threshold: ", ld.threshold)
+message("maf.threshold: ", maf.threshold)
+message("miss.rate: ", miss.rate)
+message("last.autosome: ", if (is.null(last.autosome)) "not set" else last.autosome)
+message("num.thread: ", num.thread)
 
 library(gdsfmt)
 library(SNPRelate)
 
-snpgds.option = snpgdsOption(autosome.end=last.autosome)
+if (!is.null(last.autosome)) {
+    snpgds.option <- snpgdsOption(autosome.end = last.autosome)
+    message(sprintf("Filtering to autosomes up to chromosome %d.", last.autosome))
+} else {
+    snpgds.option <- snpgdsOption()
+    message("No autosome limit specified; analyzing all chromosomes/contigs.")
+}
 
-#library(compiler)
-#enableJIT(3)
+library(compiler)
+enableJIT(3)
 
 if (! is.null(opt$gds)) {
     gds.file <- opt$gds
     if (! file.exists(gds.file)) { cat(sprintf("GDS file (%s) was not found!\n", gds.file)); h(1) }
 } else if (! is.null(opt$vcf)) {
-    vcf.file <- opt$vcf
-    if (! file.exists(vcf.file)) { cat(sprintf("VCF file (%s) was not found!\n", vcf.file)); h(1) }
+    if (! file.exists(opt$vcf)) { cat(sprintf("VCF file (%s) was not found!\n", opt$vcf)); h(1) }
     gds.file <- sprintf("%s.gds", file.prefix)
     if (exists("snpgdsVCF2GDS_R")) {
-        snpgdsVCF2GDS_R(vcf.file, gds.file, method="biallelic.only", compress.annotation="ZIP.fast", option=snpgds.option)
+        print("Starting snpgdsVCF2GDS_R")
+        snpgdsVCF2GDS_R(opt$vcf, gds.file, method="biallelic.only", compress.annotation="ZIP.fast")
+        print("Finished snpgdsVCF2GDS_R")
     } else {
-        snpgdsVCF2GDS(vcf.file, gds.file, method="biallelic.only", compress.annotation="ZIP.fast", option=snpgds.option)
+        print("We should not start here")
+        snpgdsVCF2GDS(opt$vcf, gds.file, method="biallelic.only", compress.annotation="ZIP.fast", option=snpgds.option)
     }
 } else if (! is.null(opt$hapmap)) {
     hapmap.file <- opt$hapmap
@@ -299,7 +311,21 @@ if (! is.null(opt$gds)) {
     h(1)
 }
 
-genofile <- openfn.gds(gds.file)
-snpset <- snpgdsLDpruning(genofile, ld.threshold=ld.threshold, maf=maf.threshold, missing.rate=miss.rate, num.thread = num.thread)
+print("Starting genofile")
+(genofile <- snpgdsOpen(gds.file))
+print("Finished genofile")
+print("Starting snpset")
+snpset <- snpgdsLDpruning(genofile, ld.threshold=ld.threshold, maf=maf.threshold, missing.rate=miss.rate, num.thread = num.thread, autosome.only = FALSE)
+print("Finished snpset")
+print("Starting snpset.id")
 snpset.id <- unlist(snpset)
+print("Finished snpset.id")
+if (length(snpset.id) == 0L) {
+    cat("No SNPs remain after LD/MAF/missing-rate filtering. Exiting.\n")
+    showfile.gds(closeall=TRUE)
+    quit(save = "no", status = 1)
+}
+print("Starting gds2fasta")
 gds2fasta(genofile, file.prefix, snp.id = snpset.id)
+print("Finished gds2fasta")
+showfile.gds(closeall=TRUE)
